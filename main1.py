@@ -115,6 +115,31 @@ class StockLedger:
         else:
             print("  ✔️ 변경 사항 없음. (두 계정 모두 이미 존재함).")
 
+    def record_transaction(self, from_account_id, to_account_id, amount):
+        """
+        지정된 계좌 간의 거래를 기록합니다.
+        pgledger_create_transfer 함수를 호출하여 DB에 반영합니다.
+        """
+        cur = self.conn.cursor()
+        try:
+            print(f"\n--- 거래 실행: {from_account_id} -> {to_account_id} (금액: {amount}) ---")
+            
+            cur.execute(
+                "SELECT id FROM pgledger_create_transfer(%s, %s, %s)",
+                (from_account_id, to_account_id, amount)
+            )
+            
+            transfer_id = cur.fetchone()[0]
+            self.conn.commit()
+            
+            print(f"  ✅ 거래 성공! [Transfer ID: {transfer_id}]")
+            return True
+
+        except psycopg.Error as e:
+            print(f"  ❌ 거래 실패: {e}")
+            self.conn.rollback()
+            return False
+
 
     def show_all_accounts(self):
         """현재 모든 계정의 이름, ID, 잔고를 조회"""
@@ -141,6 +166,78 @@ class StockLedger:
 
     def close(self):
         self.conn.close()
+
+
+def process_transaction(ledger):
+    """3. 거래 기록 메뉴의 워크플로우를 처리하는 함수"""
+    
+    # 1. 계좌 목록 보여주기
+    if not ledger.accounts:
+        print("\n🚨 거래를 기록하기 전에 먼저 계좌를 등록해야 합니다.")
+        return
+
+    print("\n--- 3. 거래 기록 (계좌 선택) ---")
+    
+    # 이름순으로 정렬된 계좌 목록 생성
+    sorted_accounts = sorted(ledger.accounts.items(), key=lambda item: item[0])
+    
+    # 화면에 번호, 계좌 이름, 잔고 함께 출력
+    cur = ledger.conn.cursor()
+    print(f"{'번호':<5} {'계정 이름':<30} {'현재 잔고':>15}")
+    print("-" * 55)
+    
+    for i, (name, account_id) in enumerate(sorted_accounts):
+        cur.execute("SELECT balance FROM pgledger_accounts_view WHERE id = %s", (account_id,))
+        balance = cur.fetchone()[0]
+        print(f"{i + 1:<5} {name:<30} {balance:>15,.0f}")
+    
+    # 2. 출금 계좌 선택
+    try:
+        from_choice = int(input("\n어떤 계좌에서 출금하시겠습니까? (번호 입력): ")) - 1
+        if not 0 <= from_choice < len(sorted_accounts):
+            print("❗ 잘못된 번호입니다.")
+            return
+        
+        from_account_id = sorted_accounts[from_choice][1]
+        from_account_name = sorted_accounts[from_choice][0]
+
+    except ValueError:
+        print("❗ 숫자로 입력해주세요.")
+        return
+
+    # 3. 입금 계좌 선택
+    try:
+        to_choice = int(input(f"어떤 계좌로 입금하시겠습니까? (번호 입력): ")) - 1
+        if not 0 <= to_choice < len(sorted_accounts):
+            print("❗ 잘못된 번호입니다.")
+            return
+            
+        if from_choice == to_choice:
+            print("❗ 출금 계좌와 입금 계좌는 같을 수 없습니다.")
+            return
+
+        to_account_id = sorted_accounts[to_choice][1]
+        to_account_name = sorted_accounts[to_choice][0]
+
+    except ValueError:
+        print("❗ 숫자로 입력해주세요.")
+        return
+
+    # 4. 금액 입력
+    try:
+        amount_str = input(f"얼마를 이체하시겠습니까? ({from_account_name} -> {to_account_name}): ").strip()
+        amount = Decimal(amount_str)
+        
+        if amount <= 0:
+            print("❗ 금액은 0보다 커야 합니다.")
+            return
+            
+    except Exception:
+        print("❗ 유효한 금액을 입력해주세요.")
+        return
+
+    # 5. 거래 실행
+    ledger.record_transaction(from_account_id, to_account_id, amount)
 
 
 def process_account_registration(ledger):
@@ -200,7 +297,8 @@ def display_menu():
     print("="*40)
     print("1. 계정 목록 및 잔고 조회")
     print("2. 계좌 등록 (은행, 증권사)")
-    print("3. 종료")
+    print("3. 거래 기록")
+    print("4. 종료")
     print("-" * 40)
 
 def main():
@@ -213,20 +311,23 @@ def main():
 
     while True:
         display_menu()
-        choice = input("메뉴 선택 (1-3): ")
+        choice = input("메뉴 선택 (1-4): ")
         
         if choice == '1':
             ledger.show_all_accounts()
             
         elif choice == '2':
             process_account_registration(ledger)
-                
+
         elif choice == '3':
+            process_transaction(ledger)
+                
+        elif choice == '4':
             print("\n시스템을 종료합니다. 감사합니다.")
             break
             
         else:
-            print("❗ 잘못된 입력입니다. 1, 2, 3 중 하나를 선택하세요.")
+            print("❗ 잘못된 입력입니다. 1, 2, 3, 4 중 하나를 선택하세요.")
 
     ledger.close()
 
