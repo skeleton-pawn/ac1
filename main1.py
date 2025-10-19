@@ -141,17 +141,22 @@ class StockLedger:
             return False
 
 
-    def show_all_accounts(self):
-        """현재 모든 계정의 이름, ID, 잔고를 조회"""
+    def show_all_accounts(self, show_id=False):
+        """현재 모든 계정의 이름, ID제외, 잔고를 조회"""
         if not self.accounts:
             print("\n🚨 등록된 계정이 없습니다.")
             return
             
         cur = self.conn.cursor()
+        # header 설정 관련
+        header_base= f"{'계정 이름':<25} {'잔고':>14} {'버전':>3}"
+        header_with_id= f"{'계정 이름':<25}  {'ID':>2} {'잔고':>48} {'버전':>3}"
         
+        header = header_with_id if show_id else header_base
+
         print("\n=== 등록된 계정 및 잔고 ===")
-        print(f"{'계정 이름':<30} {'ID':<5} {'잔고':>15} {'버전':>5}")
-        print("-" * 55)
+        print(header)
+        print("-" * len(header))
         
         sorted_names = sorted(self.accounts.keys())
         
@@ -162,7 +167,11 @@ class StockLedger:
                 (account_id,)
             )
             balance, version = cur.fetchone()
-            print(f"{name:<30} {account_id:<5} {balance:>15} (v{version})")
+            # 출력 형식 변경
+            if show_id:
+                print(f"{name:<30} {account_id:<20} {balance:>15} (v{version})")
+            else:
+                print(f"{name:<30} {balance:>15} (v{version})")
 
     def close(self):
         self.conn.close()
@@ -325,7 +334,26 @@ def main():
         choice = input("메뉴 선택 (1-4): ")
         
         if choice == '1':
-            ledger.show_all_accounts()
+            while True:
+                # ID 제외 목록을 먼저 보여줍니다
+                ledger.show_all_accounts(show_id=False) 
+
+                print("\n99. ID 포함 상세 조회")
+                print("000. 메인 메뉴로 돌아가기")
+                sub_choice = input("선택: ").strip()
+                
+                if sub_choice == '99':
+                    # '99' 선택 시 ID 포함 상세 조회
+                    print("\n---- ID 포함 상세 List ----")
+                    ledger.show_all_accounts(show_id=True)
+                    input("\n(엔터 키를 눌러 계정 조회 메뉴로 돌아갑니다...)") # 화면 정지를 위해 추가
+                    # 루프의 처음으로 돌아가 다시 ID 제외 목록을 보여줍니다.
+
+                elif sub_choice == '000':
+                    break
+                else:
+                    print("❗ 잘못된 입력입니다.")
+                    continue
             
         elif choice == '2':
             process_account_registration(ledger)
