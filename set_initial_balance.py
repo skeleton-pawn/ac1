@@ -164,7 +164,7 @@ def update_account_balance_direct(account_name, amount, event_date_str):
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("      PG Ledger 초기 잔고 직접 수정 스크립트")
+    print("      초기 잔고 직접 수정 스크립트")
     print("="*60)
     print("⚠️  주의: 이 스크립트는 데이터베이스를 직접 수정합니다.")
     print("="*60 + "\n")
