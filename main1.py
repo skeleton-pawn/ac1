@@ -85,14 +85,14 @@ class StockLedger:
 
     def create_asset_pair_by_menu(self, group, currency, detail, last_four_digits):
         """
-        메뉴 입력값을 받아 'bank.KRW.woori.8472' 형식의 계정 쌍을 생성합니다.
+        메뉴 입력값을 받아 'bank.KRW.woori.8472' 형식의 계정 pair를 생성합니다.
         """
         # 자산 계정 이름 (예: bank.KRW.woori.8472)
         asset_name = f"{group}.{currency}.{detail}.{last_four_digits}"
         # 상대 유동성 계정 이름 (예: liquidity.KRW.woori.8472)
         liquidity_name = f"liquidity.{currency}.{detail}.{last_four_digits}"
-        
-        print(f"\n--- 계좌 쌍 생성 시도 (자산: {currency}, 그룹: {group}.{detail}) ---")
+
+        print(f"\n--- 계좌 pair 생성 시도 (자산: {currency}, 그룹: {group}.{detail}) ---")
 
         # 1. 자산 계정 생성 시도
         asset_created, asset_id = self._create_single_account(asset_name, currency)
@@ -111,7 +111,7 @@ class StockLedger:
         # 3. 최종 커밋 
         if asset_created or liquidity_created:
             self.conn.commit()
-            print("  🎉 계좌 쌍 설정 완료 (DB 커밋).")
+            print("  🎉 계좌 pair 설정 완료 (DB 커밋).")
         else:
             print("  ✔️ 변경 사항 없음. (두 계정 모두 이미 존재함).")
 
@@ -171,53 +171,64 @@ class StockLedger:
 def process_transaction(ledger):
     """3. 거래 기록 메뉴의 워크플로우를 처리하는 함수"""
     
-    # 1. 계좌 목록 보여주기
     if not ledger.accounts:
         print("\n🚨 거래를 기록하기 전에 먼저 계좌를 등록해야 합니다.")
         return
 
-    print("\n--- 3. 거래 기록 (계좌 선택) ---")
+    # 이름순으로 정렬된 전체 계좌 목록
+    all_accounts = sorted(ledger.accounts.items(), key=lambda item: item[0])
     
-    # 이름순으로 정렬된 계좌 목록 생성
-    sorted_accounts = sorted(ledger.accounts.items(), key=lambda item: item[0])
-    
-    # 화면에 번호, 계좌 이름, 잔고 함께 출력
-    cur = ledger.conn.cursor()
-    print(f"{'번호':<5} {'계정 이름':<30} {'현재 잔고':>15}")
-    print("-" * 55)
-    
-    for i, (name, account_id) in enumerate(sorted_accounts):
-        cur.execute("SELECT balance FROM pgledger_accounts_view WHERE id = %s", (account_id,))
-        balance = cur.fetchone()[0]
-        print(f"{i + 1:<5} {name:<30} {balance:>15,.0f}")
-    
-    # 2. 출금 계좌 선택
-    try:
-        from_choice = int(input("\n어떤 계좌에서 출금하시겠습니까? (번호 입력): ")) - 1
-        if not 0 <= from_choice < len(sorted_accounts):
-            print("❗ 잘못된 번호입니다.")
-            return
-        
-        from_account_id = sorted_accounts[from_choice][1]
-        from_account_name = sorted_accounts[from_choice][0]
+    # 기본적으로 보여줄 계좌 목록 (liquidity 제외)
+    visible_accounts = [(name, acc_id) for name, acc_id in all_accounts if not name.startswith('liquidity.')]
 
-    except ValueError:
-        print("❗ 숫자로 입력해주세요.")
-        return
+    while True:
+        print("\n--- 3. 거래 기록 (계좌 선택) ---")
+        cur = ledger.conn.cursor()
+        print(f"{'번호':<5} {'계정 이름':<30} {'현재 잔고':>15}")
+        print("-" * 55)
+        
+        for i, (name, account_id) in enumerate(visible_accounts):
+            cur.execute("SELECT balance FROM pgledger_accounts_view WHERE id = %s", (account_id,))
+            balance = cur.fetchone()[0]
+            print(f"{i + 1:<5} {name:<30} {balance:>15,.0f}")
+        
+        print("-" * 55)
+        if len(visible_accounts) < len(all_accounts):
+            print("99. 모든 계좌 보기 (liquidity 포함)")
+
+        try:
+            from_choice_str = input("\n어떤 계좌에서 출금하시겠습니까? (번호 입력): ").strip()
+            
+            if from_choice_str == '99' and len(visible_accounts) < len(all_accounts):
+                visible_accounts = all_accounts
+                continue # 메뉴를 다시 보여줌
+
+            from_choice = int(from_choice_str) - 1
+            if not 0 <= from_choice < len(visible_accounts):
+                print("❗ 잘못된 번호입니다.")
+                continue
+            
+            from_account_id = visible_accounts[from_choice][1]
+            from_account_name = visible_accounts[from_choice][0]
+            break # 출금 계좌 선택 완료
+
+        except ValueError:
+            print("❗ 숫자로 입력해주세요.")
+            continue
 
     # 3. 입금 계좌 선택
     try:
         to_choice = int(input(f"어떤 계좌로 입금하시겠습니까? (번호 입력): ")) - 1
-        if not 0 <= to_choice < len(sorted_accounts):
+        if not 0 <= to_choice < len(visible_accounts):
             print("❗ 잘못된 번호입니다.")
             return
             
-        if from_choice == to_choice:
+        if visible_accounts[from_choice][1] == visible_accounts[to_choice][1]:
             print("❗ 출금 계좌와 입금 계좌는 같을 수 없습니다.")
             return
 
-        to_account_id = sorted_accounts[to_choice][1]
-        to_account_name = sorted_accounts[to_choice][0]
+        to_account_id = visible_accounts[to_choice][1]
+        to_account_name = visible_accounts[to_choice][0]
 
     except ValueError:
         print("❗ 숫자로 입력해주세요.")
@@ -286,7 +297,7 @@ def process_account_registration(ledger):
         print("❌ 유효하지 않은 계좌 끝자리입니다. 숫자로 입력해주세요.")
         return
         
-    # 5. 계좌 쌍 생성 호출
+    # 5. 계좌 pair 생성 호출
     ledger.create_asset_pair_by_menu(group_name, currency_code, detail_name, last_four_digits)
 
 
