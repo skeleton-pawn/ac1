@@ -187,14 +187,16 @@ def select_and_delete_account(prefix, account_type_name):
 
 def show_main_menu():
     """메인 메뉴를 표시합니다."""
-    print("\n" + "="*70)
-    print("      PG Ledger 관리자: 계좌 쌍 및 거래 기록 물리적 삭제 스크립트")
-    print("="*70)
+    print("\n" + "="*48)
+    print("⚠️ 주의: 관리자만 접근 가능합니다")
+    print("="*48)
+    print(" Account-pair 및 거래 기록 물리적 삭제 스크립트")
+    print("="*48)
     print("\n[메뉴]")
     print("1. 삭제할 은행 계좌 조회 (bank.*)")
     print("2. 삭제할 증권 계좌 조회 (stock.*)")
-    print("9. 종료")
-    print("="*70)
+    print("99. 종료")
+    print("="*48)
 
 def main():
     """메인 프로그램 루프"""
@@ -206,7 +208,7 @@ def main():
             select_and_delete_account('bank', '은행')
         elif choice == '2':
             select_and_delete_account('stock', '증권')
-        elif choice == '9':
+        elif choice == '99':
             print("\n👋 스크립트를 종료합니다.")
             sys.exit(0)
         else:
